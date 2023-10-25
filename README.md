@@ -32,7 +32,7 @@ deletions `COLL1.delete`.
 Check that the connector is up and running:
 
 ```
-curl -i localhost:8080/healthz
+curl -i localhost:18080/healthz
 ```
 
 If it is running correctly you should get the following response:
@@ -184,7 +184,7 @@ The connector supports the following environment variables:
 Default value is `info`.
 * `MONGO_URI`, your MongoDB URI.
 * `NATS_URL`, your NATS URL.
-* `SERVER_ADDR`, the connector's server address. Default value is `127.0.0.1:8080`.
+* `SERVER_ADDR`, the connector's server address. Default value is `127.0.0.1:18080`.
 
 Most of the time you will only need to set `MONGO_URI` and `NATS_URL`, for the other variables the defaults will suffice.
 

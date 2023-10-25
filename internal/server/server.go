@@ -2,18 +2,19 @@ package server
 
 import (
 	"context"
-	"log/slog"
 	"net"
 	"net/http"
+
+	"go.uber.org/zap"
 )
 
-const defaultAddr = "127.0.0.1:8080"
+const defaultAddr = "127.0.0.1:18080"
 
 type Server struct {
 	addr     string
 	ctx      context.Context
 	monitors []NamedMonitor
-	logger   *slog.Logger
+	logger   *zap.Logger
 
 	http *http.Server
 }
@@ -23,7 +24,7 @@ func New(opts ...Option) *Server {
 		addr:     defaultAddr,
 		ctx:      context.Background(),
 		monitors: []NamedMonitor{},
-		logger:   slog.Default(),
+		logger:   zap.NewNop(),
 	}
 
 	for _, opt := range opts {
@@ -44,12 +45,12 @@ func New(opts ...Option) *Server {
 }
 
 func (s *Server) Run() error {
-	s.logger.Info("server started", "addr", s.addr)
+	s.logger.Info("server started", zap.String("addr", s.addr))
 	return s.http.ListenAndServe()
 }
 
 func (s *Server) Close() error {
-	s.logger.Info("server gracefully shutting down", "addr", s.addr)
+	s.logger.Info("server gracefully shutting down", zap.String("addr", s.addr))
 	return s.http.Shutdown(context.Background())
 }
 
@@ -79,7 +80,7 @@ func WithNamedMonitors(monitors ...NamedMonitor) Option {
 	}
 }
 
-func WithLogger(logger *slog.Logger) Option {
+func WithLogger(logger *zap.Logger) Option {
 	return func(s *Server) {
 		if logger != nil {
 			s.logger = logger

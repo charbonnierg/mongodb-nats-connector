@@ -18,7 +18,7 @@ connector:
   nats:
     url: "nats://127.0.0.1:4222"
   server:
-    addr: ":8080"
+    addr: ":18080"
   collections:
     - dbName: "test-connector"
       collName: "coll1"
@@ -53,7 +53,7 @@ func TestLoad(t *testing.T) {
 			logLevel        = "debug"
 			mongoUri        = "mongodb://127.0.0.1:27017,127.0.0.1:27018,127.0.0.1:27019/?replicaSet=mongodb-nats-connector"
 			natsUrl         = "nats://127.0.0.1:4222"
-			addr            = ":8080"
+			addr            = ":18080"
 			csPrePostImages = true
 			capped          = true
 			nonCapped       = false

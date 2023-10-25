@@ -5,13 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/url"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.mongodb.org/mongo-driver/mongo/readpref"
+	"go.uber.org/zap"
 
 	"github.com/damianiandrea/mongodb-nats-connector/internal/server"
 )
@@ -51,9 +51,10 @@ type WatchCollectionOptions struct {
 var _ Client = &DefaultClient{}
 
 type DefaultClient struct {
+	opts   []*options.ClientOptions
 	uri    string
 	name   string
-	logger *slog.Logger
+	logger *zap.Logger
 
 	client *mongo.Client
 }
@@ -61,7 +62,8 @@ type DefaultClient struct {
 func NewDefaultClient(opts ...ClientOption) (*DefaultClient, error) {
 	c := &DefaultClient{
 		name:   defaultName,
-		logger: slog.Default(),
+		logger: zap.NewNop(),
+		opts:   []*options.ClientOptions{},
 	}
 
 	for _, opt := range opts {
@@ -72,14 +74,14 @@ func NewDefaultClient(opts ...ClientOption) (*DefaultClient, error) {
 	if err != nil {
 		return nil, fmt.Errorf("invalid mongodb uri: %v", err)
 	}
-
-	client, err := mongo.Connect(context.Background(), options.Client().ApplyURI(c.uri))
+	c.opts = append(c.opts, options.Client().ApplyURI(c.uri))
+	client, err := mongo.Connect(context.Background(), c.opts...)
 	if err != nil {
 		return nil, fmt.Errorf("could not connect to mongodb: %v", err)
 	}
 	c.client = client
 
-	c.logger.Info("connected to mongodb", "uri", parsedUri.Redacted())
+	c.logger.Info("connected to mongodb", zap.String("uri", parsedUri.Redacted()))
 	return c, nil
 }
 
@@ -117,7 +119,7 @@ func (c *DefaultClient) CreateCollection(ctx context.Context, opts *CreateCollec
 		if err := db.CreateCollection(ctx, opts.CollName, mongoOpt); err != nil {
 			return fmt.Errorf("could not create mongo collection %v: %v", opts.CollName, err)
 		}
-		c.logger.Debug("created mongodb collection", "collName", opts.CollName, "dbName", opts.DbName)
+		c.logger.Debug("created mongodb collection", zap.String("collName", opts.CollName), zap.String("dbName", opts.DbName))
 	}
 
 	// enables change stream pre and post images
@@ -161,7 +163,7 @@ func (c *DefaultClient) WatchCollection(ctx context.Context, opts *WatchCollecti
 			SetFullDocumentBeforeChange(options.WhenAvailable)
 
 		if lastResumeToken.Value != "" {
-			c.logger.Debug("resuming after token", "token", lastResumeToken.Value)
+			c.logger.Debug("resuming after token", zap.String("token", lastResumeToken.Value))
 			changeStreamOpts.SetResumeAfter(bson.D{{Key: "_data", Value: lastResumeToken.Value}})
 		}
 
@@ -169,7 +171,7 @@ func (c *DefaultClient) WatchCollection(ctx context.Context, opts *WatchCollecti
 		if err != nil {
 			return fmt.Errorf("could not watch mongo collection %v: %v", watchedColl.Name(), err)
 		}
-		c.logger.Info("watching mongodb collection", "collName", watchedColl.Name())
+		c.logger.Info("watching mongodb collection", zap.String("collName", watchedColl.Name()))
 
 		for cs.Next(ctx) {
 			currentResumeToken := cs.Current.Lookup("_id", "_data").StringValue()
@@ -179,14 +181,14 @@ func (c *DefaultClient) WatchCollection(ctx context.Context, opts *WatchCollecti
 			if err != nil {
 				return fmt.Errorf("could not marshal mongo change event from bson: %v", err)
 			}
-			c.logger.Debug("received change event", "changeEvent", string(json))
+			c.logger.Debug("received change event", zap.String("changeEvent", string(json)))
 
 			subj := fmt.Sprintf("%s.%s", opts.StreamName, operationType)
 			if err = opts.ChangeEventHandler(ctx, subj, currentResumeToken, json); err != nil {
 				// current change event was not published.
 				// current resume token will not be stored.
 				// connector will resume after the previous token.
-				c.logger.Error("could not publish change event", err)
+				c.logger.Error("could not publish change event", zap.Error(err))
 				break
 			}
 
@@ -194,12 +196,12 @@ func (c *DefaultClient) WatchCollection(ctx context.Context, opts *WatchCollecti
 				// change event has been published but token insertion failed.
 				// connector will resume after the previous token, publishing a duplicate change event.
 				// consumers should be able to detect and discard the duplicate change event by using the msg id.
-				c.logger.Error("could not insert resume token", err)
+				c.logger.Error("could not insert resume token", zap.Error(err))
 				break
 			}
 		}
 
-		c.logger.Info("stopped watching mongodb collection", "collName", watchedColl.Name())
+		c.logger.Info("stopped watching mongodb collection", zap.String("collName", watchedColl.Name()))
 		if err = cs.Close(context.Background()); err != nil {
 			return fmt.Errorf("could not close change stream: %v", err)
 		}
@@ -220,7 +222,15 @@ func WithMongoUri(uri string) ClientOption {
 	}
 }
 
-func WithLogger(logger *slog.Logger) ClientOption {
+func WithMongoOptions(opts ...*options.ClientOptions) ClientOption {
+	return func(c *DefaultClient) {
+		if opts != nil {
+			c.opts = append(c.opts, opts...)
+		}
+	}
+}
+
+func WithLogger(logger *zap.Logger) ClientOption {
 	return func(c *DefaultClient) {
 		if logger != nil {
 			c.logger = logger

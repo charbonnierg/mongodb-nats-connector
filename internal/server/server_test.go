@@ -5,31 +5,30 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
-	"os"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 )
 
 func TestNew(t *testing.T) {
 	t.Run("should create server with defaults", func(t *testing.T) {
 		srv := New()
 
-		require.Equal(t, "127.0.0.1:8080", srv.addr)
+		require.Equal(t, "127.0.0.1:18080", srv.addr)
 		require.Equal(t, context.Background(), srv.ctx)
 		require.Empty(t, srv.monitors)
-		require.Equal(t, slog.Default(), srv.logger)
+		require.Equal(t, zap.NewNop(), srv.logger)
 	})
 	t.Run("should create server with the configured options", func(t *testing.T) {
 		addr := "127.0.0.1:8085"
 		ctx := context.TODO()
 		cmpUp := &testComponent{name: "cmp_up", err: nil}
 		cmpDown := &testComponent{name: "cmp_down", err: errors.New("not reachable")}
-		logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-
+		logger, err := zap.NewProduction()
+		require.NoError(t, err)
 		srv := New(
 			WithAddr(addr),
 			WithContext(ctx),

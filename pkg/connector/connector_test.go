@@ -3,7 +3,6 @@ package connector
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"net/http"
 	"slices"
 	"strings"
@@ -29,10 +28,9 @@ func TestNew(t *testing.T) {
 		)
 
 		require.NoError(t, err)
-		require.Equal(t, slog.LevelInfo, conn.options.logLevel)
 		require.Empty(t, conn.options.mongoUri)
 		require.Equal(t, mongoClient, conn.options.mongoClient)
-		require.Empty(t, conn.options.natsUrl)
+		require.Empty(t, conn.options.natsOpts)
 		require.Equal(t, natsClient, conn.options.natsClient)
 		require.NotNil(t, conn.options.ctx)
 		require.NotNil(t, conn.options.stop)
@@ -41,42 +39,16 @@ func TestNew(t *testing.T) {
 		require.NotNil(t, conn.server)
 		require.Empty(t, conn.options.collections)
 	})
-	t.Run("should create connector with all supported log levels", func(t *testing.T) {
-		var (
-			mongoClient = &mockMongoClient{}
-			natsClient  = &mockNatsClient{}
-		)
-
-		supportedLevels := map[string]slog.Level{
-			"info":  slog.LevelInfo,
-			"debug": slog.LevelDebug,
-			"warn":  slog.LevelWarn,
-			"error": slog.LevelError,
-		}
-
-		for levelStr, level := range supportedLevels {
-			conn, err := New(
-				withMongoClient(mongoClient), // avoid connecting to a real mongo instance
-				withNatsClient(natsClient),   // avoid connecting to a real nats instance
-				WithLogLevel(levelStr),
-			)
-
-			require.NoError(t, err)
-			require.Equal(t, level, conn.options.logLevel)
-		}
-	})
 	t.Run("should create connector with given options", func(t *testing.T) {
 		var (
-			logLevel    = "debug"
 			mongoUri    = "localhost:27017"
 			mongoClient = &mockMongoClient{}
 			natsUrl     = "localhost:4222"
 			natsClient  = &mockNatsClient{}
-			serverAddr  = ":8080"
+			serverAddr  = ":18080"
 		)
 
 		conn, err := New(
-			WithLogLevel(logLevel),
 			WithMongoUri(mongoUri),
 			withMongoClient(mongoClient),
 			WithNatsUrl(natsUrl),
@@ -86,7 +58,6 @@ func TestNew(t *testing.T) {
 		)
 
 		require.NoError(t, err)
-		require.Equal(t, slog.LevelDebug, conn.options.logLevel)
 		require.Equal(t, mongoUri, conn.options.mongoUri)
 		require.Equal(t, mongoClient, conn.options.mongoClient)
 		require.Equal(t, natsUrl, conn.options.natsUrl)

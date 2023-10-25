@@ -39,11 +39,16 @@ type Log struct {
 }
 
 type Mongo struct {
-	Uri string `yaml:"uri"`
+	Uri           string `yaml:"uri"`
+	AuthMechanism string `yaml:"auth_mechanism"`
 }
 
 type Nats struct {
-	Url string `yaml:"url"`
+	Url         string `yaml:"url"`
+	Credentials string `yaml:"credentials"`
+	User        string `yaml:"user"`
+	Password    string `yaml:"password"`
+	Token       string `yaml:"token"`
 }
 
 type Server struct {

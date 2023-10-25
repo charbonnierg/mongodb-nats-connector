@@ -5,9 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
+	"strings"
 
 	"github.com/nats-io/nats.go"
+	"go.uber.org/zap"
 
 	"github.com/damianiandrea/mongodb-nats-connector/internal/server"
 )
@@ -41,10 +42,10 @@ type PublishOptions struct {
 var _ Client = &DefaultClient{}
 
 type DefaultClient struct {
-	url    string
 	name   string
-	logger *slog.Logger
+	logger *zap.Logger
 
+	opts nats.Options
 	conn *nats.Conn
 	js   nats.JetStreamContext
 }
@@ -52,24 +53,33 @@ type DefaultClient struct {
 func NewDefaultClient(opts ...ClientOption) (*DefaultClient, error) {
 	c := &DefaultClient{
 		name:   defaultName,
-		logger: slog.Default(),
+		logger: zap.NewNop(),
+		opts:   nats.GetDefaultOptions(),
 	}
 
 	for _, opt := range opts {
 		opt(c)
 	}
-
-	conn, err := nats.Connect(c.url,
+	extraOpts := []nats.Option{
 		nats.DisconnectErrHandler(func(conn *nats.Conn, err error) {
-			c.logger.Error("disconnected from nats", "err", err)
+			c.logger.Error("disconnected from nats", zap.Error(err))
+		}),
+		nats.DisconnectErrHandler(func(conn *nats.Conn, err error) {
+			c.logger.Error("disconnected from nats", zap.Error(err))
 		}),
 		nats.ReconnectHandler(func(conn *nats.Conn) {
-			c.logger.Info("reconnected to nats", "url", conn.ConnectedUrlRedacted())
+			c.logger.Info("reconnected to nats", zap.String("url", conn.ConnectedUrlRedacted()))
 		}),
 		nats.ClosedHandler(func(conn *nats.Conn) {
 			c.logger.Info("nats connection closed")
 		}),
-	)
+	}
+	for _, extraOpt := range extraOpts {
+		if err := extraOpt(&c.opts); err != nil {
+			return nil, fmt.Errorf("failed to register handler: %w", err)
+		}
+	}
+	conn, err := c.opts.Connect()
 	if err != nil {
 		return nil, fmt.Errorf("could not connect to nats: %v", err)
 	}
@@ -78,7 +88,7 @@ func NewDefaultClient(opts ...ClientOption) (*DefaultClient, error) {
 	js, _ := conn.JetStream()
 	c.js = js
 
-	c.logger.Info("connected to nats", "url", conn.ConnectedUrlRedacted())
+	c.logger.Info("connected to nats", zap.String("url", conn.ConnectedUrlRedacted()))
 	return c, nil
 }
 
@@ -107,7 +117,7 @@ func (c *DefaultClient) AddStream(_ context.Context, opts *AddStreamOptions) err
 	if err != nil {
 		return fmt.Errorf("could not add nats stream %v: %v", opts.StreamName, err)
 	}
-	c.logger.Debug("added nats stream", "streamName", opts.StreamName)
+	c.logger.Debug("added nats stream", zap.String("streamName", opts.StreamName))
 	return nil
 }
 
@@ -115,24 +125,37 @@ func (c *DefaultClient) Publish(_ context.Context, opts *PublishOptions) error {
 	if _, err := c.js.Publish(opts.Subj, opts.Data, nats.MsgId(opts.MsgId)); err != nil {
 		return fmt.Errorf("could not publish message %v to nats stream %v: %v", opts.Data, opts.Subj, err)
 	}
-	c.logger.Debug("published message", "subj", opts.Subj, "data", string(opts.Data))
+	c.logger.Debug("published message", zap.String("subj", opts.Subj), zap.String("data", string(opts.Data)))
 	return nil
 }
 
-type ClientOption func(*DefaultClient)
+type ClientOption func(*DefaultClient) error
 
 func WithNatsUrl(url string) ClientOption {
-	return func(c *DefaultClient) {
+	return func(c *DefaultClient) error {
 		if url != "" {
-			c.url = url
+			c.opts.Servers = strings.Split(url, ",")
 		}
+		return nil
 	}
 }
 
-func WithLogger(logger *slog.Logger) ClientOption {
-	return func(c *DefaultClient) {
+func WithNatsOptions(opts ...nats.Option) ClientOption {
+	return func(c *DefaultClient) error {
+		for _, opt := range opts {
+			if err := opt(&c.opts); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+}
+
+func WithLogger(logger *zap.Logger) ClientOption {
+	return func(c *DefaultClient) error {
 		if logger != nil {
 			c.logger = logger
 		}
+		return nil
 	}
 }

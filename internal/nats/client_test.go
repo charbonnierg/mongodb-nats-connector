@@ -2,8 +2,6 @@ package nats
 
 import (
 	"context"
-	"log/slog"
-	"os"
 	"testing"
 	"time"
 
@@ -11,6 +9,7 @@ import (
 	natstest "github.com/nats-io/nats-server/v2/test"
 	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 )
 
 func TestNewDefaultClient(t *testing.T) {
@@ -23,9 +22,8 @@ func TestNewDefaultClient(t *testing.T) {
 
 		require.NoError(t, err)
 		require.NoError(t, err)
-		require.Empty(t, client.url)
 		require.Equal(t, "nats", client.name)
-		require.Equal(t, slog.Default(), client.logger)
+		require.Equal(t, zap.NewNop(), client.logger)
 		require.NotNil(t, client.conn)
 		require.NotNil(t, client.js)
 	})
@@ -34,7 +32,9 @@ func TestNewDefaultClient(t *testing.T) {
 		defer s.Shutdown()
 		_ = s.EnableJetStream(&natsserver.JetStreamConfig{})
 		url := nats.DefaultURL
-		logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+		// logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+		logger, err := zap.NewProduction()
+		require.NoError(t, err)
 
 		client, err := NewDefaultClient(
 			WithNatsUrl(url),
@@ -42,7 +42,7 @@ func TestNewDefaultClient(t *testing.T) {
 		)
 
 		require.NoError(t, err)
-		require.Equal(t, url, client.url)
+		require.Equal(t, []string{url}, client.opts.Servers)
 		require.Equal(t, "nats", client.name)
 		require.Equal(t, logger, client.logger)
 		require.NotNil(t, client.conn)

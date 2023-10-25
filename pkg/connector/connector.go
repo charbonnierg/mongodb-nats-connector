@@ -5,16 +5,17 @@ import (
 	"errors"
 	"io"
 	"log/slog"
-	"os"
 	"os/signal"
 	"strings"
 	"syscall"
 
-	"golang.org/x/sync/errgroup"
-
 	"github.com/damianiandrea/mongodb-nats-connector/internal/mongo"
 	"github.com/damianiandrea/mongodb-nats-connector/internal/nats"
 	"github.com/damianiandrea/mongodb-nats-connector/internal/server"
+	_nats "github.com/nats-io/nats.go"
+	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -39,7 +40,7 @@ type Connector struct {
 	options Options
 
 	// logger represents the Connector's logger.
-	logger *slog.Logger
+	logger *zap.Logger
 
 	// server represents the HTTP server used by the Connector.
 	server *server.Server
@@ -58,13 +59,12 @@ func New(opts ...Option) (*Connector, error) {
 		}
 	}
 
-	loggerOpts := &slog.HandlerOptions{Level: c.options.logLevel}
-	c.logger = slog.New(slog.NewJSONHandler(os.Stdout, loggerOpts))
+	c.logger = c.options.logger.Named("connector")
 
 	if c.options.mongoClient == nil {
 		mongoClient, err := mongo.NewDefaultClient(
 			mongo.WithMongoUri(c.options.mongoUri),
-			mongo.WithLogger(c.logger),
+			mongo.WithLogger(c.logger.Named("mongoclient")),
 		)
 		if err != nil {
 			return nil, err
@@ -74,8 +74,8 @@ func New(opts ...Option) (*Connector, error) {
 
 	if c.options.natsClient == nil {
 		natsClient, err := nats.NewDefaultClient(
-			nats.WithNatsUrl(c.options.natsUrl),
-			nats.WithLogger(c.logger),
+			nats.WithNatsOptions(c.options.natsOpts...),
+			nats.WithLogger(c.logger.Named("natsclient")),
 		)
 		if err != nil {
 			return nil, err
@@ -89,7 +89,7 @@ func New(opts ...Option) (*Connector, error) {
 		server.WithAddr(c.options.serverAddr),
 		server.WithContext(c.options.ctx),
 		server.WithNamedMonitors(c.options.mongoClient, c.options.natsClient),
-		server.WithLogger(c.logger),
+		server.WithLogger(c.logger.Named("httpserver")),
 	)
 
 	return c, nil
@@ -178,25 +178,29 @@ func (c *Connector) cleanup() {
 
 func (c *Connector) closeClient(closer io.Closer) {
 	if err := closer.Close(); err != nil {
-		c.logger.Error("could not close client", err)
+		c.logger.Error("could not close client", zap.Error(err))
 	}
 }
 
 // Options represents the possible options to be applied to a Connector.
 type Options struct {
-
-	// logLevel represents the Connector's log level.
-	// Can be set to 'info', 'debug', 'warn', or 'error'.
-	logLevel slog.Level
+	// logger represents the Connector's logger.
+	logger *zap.Logger
 
 	// mongoUri represents the Connector's MongoDB URI.
 	mongoUri string
+
+	// mongoOpts represents the Connector's MongoDB options.
+	mongoOpts []*options.ClientOptions
 
 	// mongoClient represents the MongoDB client used by the Connector to connect to MongoDB.
 	mongoClient mongo.Client
 
 	// natsUrl represents the Connector's NATS URL.
 	natsUrl string
+
+	// natsOpts represents the Connector's NATS options.
+	natsOpts []_nats.Option
 
 	// natsClient represents the NATS client used by the Connector to connect to NATS.
 	natsClient nats.Client
@@ -214,27 +218,20 @@ type Options struct {
 
 func getDefaultOptions() Options {
 	return Options{
-		logLevel:    defaultLogLevel,
 		ctx:         context.Background(),
 		collections: make([]*collection, 0),
+		logger:      zap.NewNop(),
 	}
 }
 
 // Option is used to configure the Connector.
 type Option func(*Options) error
 
-// WithLogLevel sets the Connector's log level.
-func WithLogLevel(logLevel string) Option {
+// WithLogger sets the Connector's logger.
+func WithLogger(logger *zap.Logger) Option {
 	return func(o *Options) error {
-		switch strings.ToLower(logLevel) {
-		case "debug":
-			o.logLevel = slog.LevelDebug
-		case "warn":
-			o.logLevel = slog.LevelWarn
-		case "error":
-			o.logLevel = slog.LevelError
-		case "info":
-			o.logLevel = slog.LevelInfo
+		if logger != nil {
+			o.logger = logger
 		}
 		return nil
 	}
@@ -246,6 +243,20 @@ func WithMongoUri(mongoUri string) Option {
 		if mongoUri != "" {
 			o.mongoUri = mongoUri
 		}
+		return nil
+	}
+}
+
+// WithMongoOptions sets the Connector's MongoDB options.
+func WithMongoOptions(mongoOpts ...*options.ClientOptions) Option {
+	return func(o *Options) error {
+		if mongoOpts == nil {
+			return nil
+		}
+		if o.mongoOpts == nil {
+			o.mongoOpts = []*options.ClientOptions{}
+		}
+		o.mongoOpts = append(o.mongoOpts, mongoOpts...)
 		return nil
 	}
 }
@@ -267,6 +278,20 @@ func WithNatsUrl(natsUrl string) Option {
 		if natsUrl != "" {
 			o.natsUrl = natsUrl
 		}
+		return nil
+	}
+}
+
+// WithNatsOptions sets the Connector's NATS options.
+func WithNatsOptions(natsOpts ..._nats.Option) Option {
+	return func(o *Options) error {
+		if natsOpts == nil {
+			return nil
+		}
+		if o.natsOpts == nil {
+			o.natsOpts = []_nats.Option{}
+		}
+		o.natsOpts = append(o.natsOpts, natsOpts...)
 		return nil
 	}
 }

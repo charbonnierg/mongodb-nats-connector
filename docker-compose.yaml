@@ -12,7 +12,7 @@ services:
       - connector-net
     ports:
       - "27017:27017"
-    command: [ "--replSet", "mongodb-nats-connector", "--bind_ip_all" ]
+    command: ["--replSet", "mongodb-nats-connector", "--bind_ip_all"]
     deploy:
       restart_policy:
         condition: on-failure
@@ -28,7 +28,7 @@ services:
       - connector-net
     ports:
       - "27018:27017"
-    command: [ "--replSet", "mongodb-nats-connector", "--bind_ip_all" ]
+    command: ["--replSet", "mongodb-nats-connector", "--bind_ip_all"]
     deploy:
       restart_policy:
         condition: on-failure
@@ -40,7 +40,7 @@ services:
       - connector-net
     ports:
       - "27019:27017"
-    command: [ "--replSet", "mongodb-nats-connector", "--bind_ip_all" ]
+    command: ["--replSet", "mongodb-nats-connector", "--bind_ip_all"]
     deploy:
       restart_policy:
         condition: on-failure
@@ -87,12 +87,12 @@ services:
     volumes:
       - "./example:/root/config"
     ports:
-      - "8080:8080"
+      - "18080:18080"
     environment:
       - CONFIG_FILE=/root/config/connector.yaml
       - MONGO_URI=mongodb://mongo1:27017,mongo2:27017,mongo3:27017/?replicaSet=mongodb-nats-connector
       - NATS_URL=nats://nats1:4222
-      - SERVER_ADDR=:8080
+      - SERVER_ADDR=:18080
     deploy:
       restart_policy:
         condition: on-failure
@@ -109,7 +109,7 @@ services:
     environment:
       - MONGO_URI=mongodb://mongo1:27017,mongo2:27017,mongo3:27017/?replicaSet=mongodb-nats-connector
       - NATS_URL=nats://nats1:4222
-      - CONNECTOR_URL=http://connector:8080
+      - CONNECTOR_URL=http://connector:18080
 
 networks:
   connector-net:
