@@ -5,9 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
-	"os/signal"
 	"strings"
-	"syscall"
 
 	"github.com/damianiandrea/mongodb-nats-connector/internal/mongo"
 	"github.com/damianiandrea/mongodb-nats-connector/internal/nats"
@@ -62,6 +60,7 @@ func New(opts ...Option) (*Connector, error) {
 	c.logger = c.options.logger.Named("connector")
 
 	if c.options.mongoClient == nil {
+		c.logger.Warn("mongo options", zap.Any("options", c.options.mongoOpts))
 		mongoClient, err := mongo.NewDefaultClient(
 			mongo.WithMongoUri(c.options.mongoUri),
 			mongo.WithLogger(c.logger.Named("mongoclient")),
@@ -74,7 +73,8 @@ func New(opts ...Option) (*Connector, error) {
 
 	if c.options.natsClient == nil {
 		natsClient, err := nats.NewDefaultClient(
-			nats.WithNatsOptions(c.options.natsOpts...),
+			nats.WithNatsUrl(c.options.natsUrl),
+			nats.WithNatsOptions(c.options.natsOpts),
 			nats.WithLogger(c.logger.Named("natsclient")),
 		)
 		if err != nil {
@@ -83,7 +83,7 @@ func New(opts ...Option) (*Connector, error) {
 		c.options.natsClient = natsClient
 	}
 
-	c.options.ctx, c.options.stop = signal.NotifyContext(c.options.ctx, syscall.SIGINT, syscall.SIGTERM)
+	c.options.ctx, c.options.stop = context.WithCancel(c.options.ctx)
 
 	c.server = server.New(
 		server.WithAddr(c.options.serverAddr),
@@ -139,12 +139,13 @@ func (c *Connector) Run() error {
 
 		group.Go(func() error {
 			watchCollOpts := &mongo.WatchCollectionOptions{
-				WatchedDbName:          coll.dbName,
-				WatchedCollName:        coll.collName,
-				ResumeTokensDbName:     coll.tokensDbName,
-				ResumeTokensCollName:   coll.tokensCollName,
-				ResumeTokensCollCapped: coll.tokensCollCapped,
-				StreamName:             coll.streamName,
+				WatchedDbName:                   coll.dbName,
+				WatchedCollName:                 coll.collName,
+				ResumeTokensDbName:              coll.tokensDbName,
+				ResumeTokensCollName:            coll.tokensCollName,
+				ResumeTokensCollCapped:          coll.tokensCollCapped,
+				DontSetFullDocumentBeforeChange: coll.dontSetFullDocumentBeforeChange,
+				StreamName:                      coll.streamName,
 				ChangeEventHandler: func(ctx context.Context, subj, msgId string, data []byte) error {
 					publishOpts := &nats.PublishOptions{
 						Subj:  subj,
@@ -361,14 +362,15 @@ func WithCollection(dbName, collName string, opts ...CollectionOption) Option {
 }
 
 type collection struct {
-	dbName                       string
-	collName                     string
-	changeStreamPreAndPostImages bool
-	tokensDbName                 string
-	tokensCollName               string
-	tokensCollCapped             bool
-	tokensCollSizeInBytes        int64
-	streamName                   string
+	dbName                          string
+	collName                        string
+	changeStreamPreAndPostImages    bool
+	dontSetFullDocumentBeforeChange bool
+	tokensDbName                    string
+	tokensCollName                  string
+	tokensCollCapped                bool
+	tokensCollSizeInBytes           int64
+	streamName                      string
 }
 
 // CollectionOption is used to configure a MongoDB collection to be watched.
@@ -378,6 +380,13 @@ type CollectionOption func(*collection) error
 func WithChangeStreamPreAndPostImages() CollectionOption {
 	return func(c *collection) error {
 		c.changeStreamPreAndPostImages = true
+		return nil
+	}
+}
+
+func WithoutFullDocumentBeforeChange() CollectionOption {
+	return func(c *collection) error {
+		c.dontSetFullDocumentBeforeChange = false
 		return nil
 	}
 }

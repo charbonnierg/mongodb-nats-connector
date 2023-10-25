@@ -56,10 +56,10 @@ func NewDefaultClient(opts ...ClientOption) (*DefaultClient, error) {
 		logger: zap.NewNop(),
 		opts:   nats.GetDefaultOptions(),
 	}
-
 	for _, opt := range opts {
 		opt(c)
 	}
+	c.logger.Warn("nats options", zap.Any("options", c.opts))
 	extraOpts := []nats.Option{
 		nats.DisconnectErrHandler(func(conn *nats.Conn, err error) {
 			c.logger.Error("disconnected from nats", zap.Error(err))
@@ -140,9 +140,13 @@ func WithNatsUrl(url string) ClientOption {
 	}
 }
 
-func WithNatsOptions(opts ...nats.Option) ClientOption {
+func WithNatsOptions(opts []nats.Option) ClientOption {
 	return func(c *DefaultClient) error {
+		if opts == nil {
+			return nil
+		}
 		for _, opt := range opts {
+			c.logger.Warn("applying nats option")
 			if err := opt(&c.opts); err != nil {
 				return err
 			}

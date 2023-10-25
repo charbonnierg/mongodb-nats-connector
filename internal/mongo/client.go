@@ -39,13 +39,14 @@ type CreateCollectionOptions struct {
 type ChangeEventHandler func(ctx context.Context, subj, msgId string, data []byte) error
 
 type WatchCollectionOptions struct {
-	WatchedDbName          string
-	WatchedCollName        string
-	ResumeTokensDbName     string
-	ResumeTokensCollName   string
-	ResumeTokensCollCapped bool
-	StreamName             string
-	ChangeEventHandler     ChangeEventHandler
+	WatchedDbName                   string
+	WatchedCollName                 string
+	ResumeTokensDbName              string
+	ResumeTokensCollName            string
+	ResumeTokensCollCapped          bool
+	DontSetFullDocumentBeforeChange bool
+	StreamName                      string
+	ChangeEventHandler              ChangeEventHandler
 }
 
 var _ Client = &DefaultClient{}
@@ -159,8 +160,11 @@ func (c *DefaultClient) WatchCollection(ctx context.Context, opts *WatchCollecti
 		}
 
 		changeStreamOpts := options.ChangeStream().
-			SetFullDocument(options.UpdateLookup).
-			SetFullDocumentBeforeChange(options.WhenAvailable)
+			SetFullDocument(options.UpdateLookup)
+
+		if !opts.DontSetFullDocumentBeforeChange {
+			changeStreamOpts = changeStreamOpts.SetFullDocumentBeforeChange(options.WhenAvailable)
+		}
 
 		if lastResumeToken.Value != "" {
 			c.logger.Debug("resuming after token", zap.String("token", lastResumeToken.Value))

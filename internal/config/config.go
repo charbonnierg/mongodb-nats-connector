@@ -56,12 +56,13 @@ type Server struct {
 }
 
 type Collection struct {
-	DbName                       string `yaml:"dbName,omitempty"`
-	CollName                     string `yaml:"collName,omitempty"`
-	ChangeStreamPreAndPostImages *bool  `yaml:"changeStreamPreAndPostImages,omitempty"`
-	TokensDbName                 string `yaml:"tokensDbName,omitempty"`
-	TokensCollName               string `yaml:"tokensCollName,omitempty"`
-	TokensCollCapped             *bool  `yaml:"tokensCollCapped,omitempty"`
-	TokensCollSizeInBytes        *int64 `yaml:"tokensCollSizeInBytes,omitempty"`
-	StreamName                   string `yaml:"streamName,omitempty"`
+	DbName                          string `yaml:"dbName,omitempty"`
+	CollName                        string `yaml:"collName,omitempty"`
+	ChangeStreamPreAndPostImages    *bool  `yaml:"changeStreamPreAndPostImages,omitempty"`
+	DontSetFullDocumentBeforeChange *bool  `yaml:"dontSetFullDocumentBeforeChange,omitempty"`
+	TokensDbName                    string `yaml:"tokensDbName,omitempty"`
+	TokensCollName                  string `yaml:"tokensCollName,omitempty"`
+	TokensCollCapped                *bool  `yaml:"tokensCollCapped,omitempty"`
+	TokensCollSizeInBytes           *int64 `yaml:"tokensCollSizeInBytes,omitempty"`
+	StreamName                      string `yaml:"streamName,omitempty"`
 }
